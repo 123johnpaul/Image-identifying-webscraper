@@ -12,24 +12,24 @@ The loader auto-detects common column names (`id`, `articleType`, `baseColour`, 
 ## Install training dependencies
 
 ```bash
-pip install -r requirements-training.txt
+pip install -r requirements-training.txt --break-system-packages
 ```
 
 ## Train
 
 ```bash
-python -m app.training.train_similarity --data-dir app/data --epochs 4 --batch-size 32
+python3 -m app.training.train_similarity --data-dir app/data --max-samples 15000 --embedding-dim 128
 ```
 
 Outputs:
 
-- `app/models/similarity_v1/best.pt`
+- `app/models/similarity_v1/model.joblib`
 - `app/models/similarity_v1/summary.json`
 
 ## Build nearest-neighbor index
 
 ```bash
-python -m app.training.build_index --data-dir app/data --checkpoint app/models/similarity_v1/best.pt
+python3 -m app.training.build_index --data-dir app/data --checkpoint app/models/similarity_v1/model.joblib
 ```
 
 Output:
@@ -39,12 +39,10 @@ Output:
 ## Test inference
 
 ```bash
-python -m app.training.infer_similarity --image app/data/images/<some_image>.jpg --top-k 5
+python3 -m app.training.infer_similarity --image app/data/images/<some_image>.jpg --top-k 5
 ```
 
 ## Notes for 8GB RAM, no GPU
 
-- Keep `batch-size` between `16` and `32`.
-- Start with `epochs=3` then increase if needed.
-- This is an embedding model for similarity retrieval, not exact SKU classification.
-
+- Keep `max-samples` at `10000` to `15000` for the first run.
+- This is an embedding model for similarity retrieval.

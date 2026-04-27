@@ -58,5 +58,10 @@ async def identify_product(
     return IdentifyResponse(
         product=product,
         search_queries=queries,
-        debug={"provider": result.get("raw", {}).get("provider", "mock")},
+        debug={
+            "provider": result.get("raw", {}).get("provider", "mock"),
+            "model_ready": bool(result.get("raw", {}).get("matches")),
+            "top_matches": result.get("raw", {}).get("matches", []),
+            "error": result.get("raw", {}).get("error"),
+        },
     )

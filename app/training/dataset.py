@@ -6,7 +6,12 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 from PIL import Image
-from torch.utils.data import Dataset
+try:
+    from torch.utils.data import Dataset
+except Exception:
+    class Dataset:
+        pass
+
 
 
 DEFAULT_META_CANDIDATES: Sequence[str] = (
@@ -38,7 +43,7 @@ class Sample:
     metadata: Dict[str, str]
 
 
-def load_fashion_samples(data_dir: Path) -> List[Sample]:
+def load_fashion_samples(data_dir: Path, max_samples: int = 0) -> List[Sample]:
     data_dir = data_dir.resolve()
     image_dir = _pick_existing(
         (
@@ -101,6 +106,9 @@ def load_fashion_samples(data_dir: Path) -> List[Sample]:
         }
         samples.append(Sample(image_path=image_path, label_name=label_name, metadata=metadata))
 
+        if max_samples > 0 and len(samples) >= max_samples:
+            break
+
     if not samples:
         raise ValueError("No usable samples found. Check your images and metadata file.")
     return samples
@@ -127,4 +135,3 @@ class FashionSimilarityDataset(Dataset):
             image = self.transform(image)
         label_idx = self.label_to_idx[sample.label_name]
         return image, label_idx
-

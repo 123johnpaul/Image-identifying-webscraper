@@ -4,88 +4,50 @@ import argparse
 import json
 from pathlib import Path
 
+import joblib
 import numpy as np
-import torch
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from tqdm import tqdm
 
 from app.training.dataset import load_fashion_samples
-from app.training.model import build_model
-
-
-class InferenceDataset(Dataset):
-    def __init__(self, samples, transform):
-        self.samples = samples
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        from PIL import Image
-
-        sample = self.samples[idx]
-        image = Image.open(sample.image_path).convert("RGB")
-        return self.transform(image), str(sample.image_path), sample.metadata
+from app.training.features import extract_feature_vector
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", type=Path, default=Path("app/data"))
-    parser.add_argument("--checkpoint", type=Path, default=Path("app/models/similarity_v1/best.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("app/models/similarity_v1/model.joblib"))
     parser.add_argument("--out-index", type=Path, default=Path("app/models/similarity_v1/index.npz"))
+    parser.add_argument("--max-samples", type=int, default=0)
     args = parser.parse_args()
 
-    payload = torch.load(args.checkpoint, map_location="cpu")
-    model = build_model(
-        num_classes=len(payload["label_to_idx"]),
-        embedding_dim=payload["config"]["embedding_dim"],
-    )
-    model.load_state_dict(payload["model_state"])
-    model.eval()
+    payload = joblib.load(args.checkpoint)
+    scaler = payload["scaler"]
+    pca = payload["pca"]
 
-    samples = load_fashion_samples(args.data_dir)
-    tf = transforms.Compose(
-        [
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ]
-    )
-    ds = InferenceDataset(samples, transform=tf)
-    loader = DataLoader(ds, batch_size=64, shuffle=False, num_workers=0)
+    samples = load_fashion_samples(args.data_dir, max_samples=args.max_samples)
 
-    all_embs = []
-    all_paths = []
-    all_meta = []
-    with torch.no_grad():
-        for images, paths, metas in loader:
-            _, embs = model(images)
-            all_embs.append(embs.cpu().numpy())
-            all_paths.extend(list(paths))
-            # DataLoader collates dict of lists
-            count = len(paths)
-            for i in range(count):
-                all_meta.append(
-                    {
-                        "title": metas["title"][i],
-                        "brand": metas["brand"][i],
-                        "category": metas["category"][i],
-                        "color": metas["color"][i],
-                    }
-                )
+    feats = []
+    paths = []
+    metas = []
+    for sample in tqdm(samples, desc="index features"):
+        feats.append(extract_feature_vector(sample.image_path))
+        paths.append(str(sample.image_path))
+        metas.append(sample.metadata)
 
-    embeddings = np.concatenate(all_embs, axis=0).astype(np.float32)
+    x = np.asarray(feats, dtype=np.float32)
+    x = scaler.transform(x)
+    emb = pca.transform(x).astype(np.float32)
+    emb /= np.linalg.norm(emb, axis=1, keepdims=True) + 1e-8
+
     args.out_index.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         args.out_index,
-        embeddings=embeddings,
-        image_paths=np.array(all_paths),
-        metadata=np.array([json.dumps(m) for m in all_meta]),
+        embeddings=emb,
+        image_paths=np.asarray(paths),
+        metadata=np.asarray([json.dumps(m) for m in metas]),
     )
-    print(f"saved index -> {args.out_index} ({len(all_paths)} entries)")
+    print(f"saved index -> {args.out_index} ({len(paths)} entries)")
 
 
 if __name__ == "__main__":
     main()
-
