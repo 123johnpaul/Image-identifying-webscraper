@@ -6,12 +6,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 from PIL import Image
+import re
+
 try:
     from torch.utils.data import Dataset
 except Exception:
     class Dataset:
         pass
-
 
 
 DEFAULT_META_CANDIDATES: Sequence[str] = (
@@ -36,6 +37,18 @@ def _first_existing_column(frame: pd.DataFrame, names: Sequence[str]) -> Optiona
     return None
 
 
+def _derive_brand_from_name(name: str) -> str:
+    tokens = [t for t in re.split(r"\s+", str(name).strip()) if t]
+    if not tokens:
+        return "unknown"
+    t = tokens[0].strip(".,:-_/")
+    if len(t) < 2:
+        return "unknown"
+    if t.lower() in {"men", "women", "boys", "girls", "unisex"}:
+        return "unknown"
+    return t
+
+
 @dataclass
 class Sample:
     image_path: Path
@@ -43,7 +56,12 @@ class Sample:
     metadata: Dict[str, str]
 
 
-def load_fashion_samples(data_dir: Path, max_samples: int = 0) -> List[Sample]:
+def load_fashion_samples(
+    data_dir: Path,
+    max_samples: int = 0,
+    require_brand: bool = False,
+    seed: int = 42,
+) -> List[Sample]:
     data_dir = data_dir.resolve()
     image_dir = _pick_existing(
         (
@@ -68,6 +86,8 @@ def load_fashion_samples(data_dir: Path, max_samples: int = 0) -> List[Sample]:
     if df.empty:
         raise ValueError(f"Metadata file is empty: {meta_path}")
 
+    df = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+
     id_col = _first_existing_column(df, ("id", "image_id", "product_id"))
     image_col = _first_existing_column(df, ("image_path", "filename", "image", "file"))
 
@@ -75,6 +95,7 @@ def load_fashion_samples(data_dir: Path, max_samples: int = 0) -> List[Sample]:
     color_col = _first_existing_column(df, ("baseColour", "color", "colour"))
     brand_col = _first_existing_column(df, ("brandName", "brand"))
     category_col = _first_existing_column(df, ("subCategory", "category", "masterCategory"))
+    name_col = _first_existing_column(df, ("productDisplayName", "title", "name"))
 
     samples: List[Sample] = []
     for _, row in df.iterrows():
@@ -92,10 +113,19 @@ def load_fashion_samples(data_dir: Path, max_samples: int = 0) -> List[Sample]:
 
         article = str(row[article_col]).strip() if article_col and pd.notna(row[article_col]) else "unknown"
         color = str(row[color_col]).strip() if color_col and pd.notna(row[color_col]) else "unknown"
-        category = (
-            str(row[category_col]).strip() if category_col and pd.notna(row[category_col]) else "unknown"
-        )
-        brand = str(row[brand_col]).strip() if brand_col and pd.notna(row[brand_col]) else "unknown"
+        category = str(row[category_col]).strip() if category_col and pd.notna(row[category_col]) else "unknown"
+
+        if brand_col and pd.notna(row[brand_col]):
+            brand = str(row[brand_col]).strip()
+        else:
+            raw_name = str(row[name_col]).strip() if name_col and pd.notna(row[name_col]) else ""
+            brand = _derive_brand_from_name(raw_name)
+
+        if not brand:
+            brand = "unknown"
+
+        if require_brand and brand.lower() in {"unknown", "nan", "none", "null", ""}:
+            continue
 
         label_name = f"{category}|{article}|{color}"
         metadata = {

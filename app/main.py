@@ -1,6 +1,15 @@
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.routers.identify import router as identify_router
+
+# Load env vars from app/.env first, then fallback to .env at repo root.
+APP_DIR = Path(__file__).resolve().parent
+load_dotenv(APP_DIR / ".env")
+load_dotenv(APP_DIR.parent / ".env")
 
 app = FastAPI(title="Price Compare AI", version="0.1.0")
 

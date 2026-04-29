@@ -18,13 +18,20 @@ def main():
     parser.add_argument("--checkpoint", type=Path, default=Path("app/models/similarity_v1/model.joblib"))
     parser.add_argument("--out-index", type=Path, default=Path("app/models/similarity_v1/index.npz"))
     parser.add_argument("--max-samples", type=int, default=0)
+    parser.add_argument("--require-brand", action="store_true")
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     payload = joblib.load(args.checkpoint)
     scaler = payload["scaler"]
     pca = payload["pca"]
 
-    samples = load_fashion_samples(args.data_dir, max_samples=args.max_samples)
+    samples = load_fashion_samples(
+        args.data_dir,
+        max_samples=args.max_samples,
+        require_brand=args.require_brand,
+        seed=args.seed,
+    )
 
     feats = []
     paths = []

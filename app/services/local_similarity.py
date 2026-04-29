@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, List
 
@@ -13,11 +14,17 @@ from app.training.features import extract_feature_vector
 class LocalSimilarityEngine:
     def __init__(
         self,
-        checkpoint_path: str = "app/models/similarity_v1/model.joblib",
-        index_path: str = "app/models/similarity_v1/index.npz",
+        checkpoint_path: str | None = None,
+        index_path: str | None = None,
     ) -> None:
-        self.checkpoint_path = Path(checkpoint_path)
-        self.index_path = Path(index_path)
+        default_ckpt = "app/models/similarity_brand_v1/model.joblib"
+        default_idx = "app/models/similarity_brand_v1/index.npz"
+
+        ckpt = checkpoint_path or os.getenv("LOCAL_MODEL_CHECKPOINT") or default_ckpt
+        idx = index_path or os.getenv("LOCAL_MODEL_INDEX") or default_idx
+
+        self.checkpoint_path = Path(ckpt)
+        self.index_path = Path(idx)
         self.ready = self.checkpoint_path.exists() and self.index_path.exists()
 
         self.scaler = None
@@ -43,7 +50,7 @@ class LocalSimilarityEngine:
         if not self.ready:
             return {
                 "ready": False,
-                "error": "Local similarity model/index not found. Train first.",
+                "error": f"Local model/index not found: {self.checkpoint_path} | {self.index_path}",
                 "matches": [],
             }
 

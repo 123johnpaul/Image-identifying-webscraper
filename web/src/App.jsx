@@ -7,11 +7,11 @@ function App() {
   const [imageFile, setImageFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [description, setDescription] = useState('')
-  const [identifyResult, setIdentifyResult] = useState('Waiting for image…')
-  const [compareResult, setCompareResult] = useState('Waiting for query…')
+  const [identifyError, setIdentifyError] = useState('')
+  const [compareMessage, setCompareMessage] = useState('Waiting for query…')
   const [metricPrice, setMetricPrice] = useState('$0.00')
   const [metricConfidence, setMetricConfidence] = useState('--')
-  const [metricProvider, setMetricProvider] = useState('mock')
+  const [metricProvider, setMetricProvider] = useState('local_similarity')
   const [lastIdentify, setLastIdentify] = useState(null)
 
   const hasImage = useMemo(() => Boolean(imageFile), [imageFile])
@@ -24,7 +24,7 @@ function App() {
 
   const handleIdentify = async () => {
     if (!imageFile) {
-      setIdentifyResult('Please upload an image first.')
+      setIdentifyError('Please upload an image first.')
       return
     }
 
@@ -34,7 +34,7 @@ function App() {
       formData.append('description', description.trim())
     }
 
-    setIdentifyResult('Identifying product…')
+    setIdentifyError('')
 
     try {
       const res = await fetch(`${API_BASE}/identify-product`, {
@@ -48,17 +48,16 @@ function App() {
 
       const data = await res.json()
       setLastIdentify(data)
-      setIdentifyResult(JSON.stringify(data, null, 2))
-      setMetricConfidence(data.product?.confidence ?? '--')
-      setMetricProvider(data.debug?.provider ?? 'mock')
+      setMetricConfidence(data.product?.confidence ? `${Math.round(data.product.confidence * 100)}%` : '--')
+      setMetricProvider(data.debug?.provider ?? 'local_similarity')
     } catch (err) {
-      setIdentifyResult(err.message)
+      setIdentifyError(err.message)
     }
   }
 
   const handleCompare = async () => {
     if (!lastIdentify) {
-      setCompareResult('Run identify first.')
+      setCompareMessage('Run identify first.')
       return
     }
 
@@ -67,7 +66,7 @@ function App() {
       product: lastIdentify.product,
     }
 
-    setCompareResult('Comparing prices…')
+    setCompareMessage('Comparing prices…')
 
     try {
       const res = await fetch(`${API_BASE}/compare`, {
@@ -77,12 +76,14 @@ function App() {
       })
 
       const data = await res.json()
-      setCompareResult(JSON.stringify(data, null, 2))
       if (data.cheapest?.price) {
         setMetricPrice(`$${data.cheapest.price}`)
+        setCompareMessage(`Cheapest found at ${data.cheapest.store ?? 'store'} for $${data.cheapest.price}`)
+      } else {
+        setCompareMessage('Price comparison endpoint is still placeholder mode.')
       }
     } catch (err) {
-      setCompareResult(err.message)
+      setCompareMessage(err.message)
     }
   }
 
@@ -90,11 +91,11 @@ function App() {
     setImageFile(null)
     setPreviewUrl('')
     setDescription('')
-    setIdentifyResult('Waiting for image…')
-    setCompareResult('Waiting for query…')
+    setIdentifyError('')
+    setCompareMessage('Waiting for query…')
     setMetricPrice('$0.00')
     setMetricConfidence('--')
-    setMetricProvider('mock')
+    setMetricProvider('local_similarity')
     setLastIdentify(null)
   }
 
@@ -110,20 +111,23 @@ function App() {
     event.preventDefault()
   }
 
+  const product = lastIdentify?.product
+  const topMatches = lastIdentify?.debug?.top_matches || []
+
   return (
     <div className="page">
       <div className="bg-noise" />
 
       <header className="hero">
         <div className="hero-left">
-          <p className="pill">Image → Identify → Compare</p>
+          <p className="pill">Image | Identify | Compare</p>
           <h1>Find the lowest price from a single product photo.</h1>
           <p className="sub">
-            Upload a product image, get a smart match, and compare prices across
-            simulated retailers. Built for fast prototyping, ready for real data.
+            Upload a product image, detect what it is, and compare prices across
+            stores without seeing raw JSON debug output.
           </p>
           <div className="hero-actions">
-            <button className="btn btn-ghost" onClick={() => setDescription('Nike Air Max black running shoe')}>
+            <button className="btn btn-ghost" onClick={() => setDescription('Red cotton shirt')}>
               Use sample description
             </button>
             <button className="btn btn-muted" onClick={handleReset}>
@@ -159,7 +163,7 @@ function App() {
             </div>
             <div className="uploader-meta">
               <h2>Upload product image</h2>
-              <p>Supported: JPG, PNG. Add a description to boost results.</p>
+              <p>Supported: JPG, PNG. Add a short description if needed.</p>
               <div className="uploader-actions">
                 <label className="btn" htmlFor="imageInput">Choose image</label>
                 <input
@@ -187,7 +191,7 @@ function App() {
           <textarea
             id="description"
             rows="3"
-            placeholder="e.g. Nike Air Max black running shoe"
+            placeholder="e.g. red shirt"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
@@ -197,19 +201,47 @@ function App() {
       <section className="results">
         <div className="result-card">
           <h3>Identified Product</h3>
-          <pre>{identifyResult}</pre>
+          {!product && <p className="muted">Waiting for image...</p>}
+          {identifyError && <p className="error">{identifyError}</p>}
+          {product && (
+            <div className="product-grid">
+              <div><span className="k">Name</span><span>{product.name}</span></div>
+              <div><span className="k">Category</span><span>{product.category || 'Unknown'}</span></div>
+              <div><span className="k">Color</span><span>{product.color || 'Unknown'}</span></div>
+              <div><span className="k">Brand</span><span>{product.brand || 'Unknown'}</span></div>
+            </div>
+          )}
+          {lastIdentify?.search_queries?.length > 0 && (
+            <div>
+              <p className="muted">Search Queries</p>
+              <div className="chips">
+                {lastIdentify.search_queries.map((q) => <span className="chip" key={q}>{q}</span>)}
+              </div>
+            </div>
+          )}
         </div>
+
         <div className="result-card">
-          <h3>Price Comparison</h3>
-          <pre>{compareResult}</pre>
+          <h3>Top Visual Matches</h3>
+          {topMatches.length === 0 && <p className="muted">No matches yet.</p>}
+          {topMatches.slice(0, 4).map((m, idx) => (
+            <div className="match-row" key={`${m.image_path}-${idx}`}>
+              <div>
+                <strong>{m.metadata?.title || 'Item'}</strong>
+                <p className="muted small">{m.metadata?.category || 'Unknown'} • {m.metadata?.color || 'Unknown'}</p>
+              </div>
+              <span className="score">{Math.round((m.score || 0) * 100)}%</span>
+            </div>
+          ))}
           <button className="btn btn-primary" onClick={handleCompare}>
             Compare prices
           </button>
+          <p className="muted">{compareMessage}</p>
         </div>
       </section>
 
       <footer className="footer">
-        <span>Prototype UI · Data and provider placeholders enabled</span>
+        <span>Prototype UI · Structured product output</span>
       </footer>
     </div>
   )

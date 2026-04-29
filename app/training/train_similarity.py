@@ -35,12 +35,18 @@ def main() -> None:
     parser.add_argument("--embedding-dim", type=int, default=128)
     parser.add_argument("--max-samples", type=int, default=15000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--require-brand", action="store_true")
     args = parser.parse_args()
 
     set_seed(args.seed)
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    samples = load_fashion_samples(args.data_dir, max_samples=args.max_samples)
+    samples = load_fashion_samples(
+        args.data_dir,
+        max_samples=args.max_samples,
+        require_brand=args.require_brand,
+        seed=args.seed,
+    )
 
     label_to_idx = build_label_map(samples)
     label_names = [s.label_name for s in samples]
@@ -73,11 +79,8 @@ def main() -> None:
     train_emb = pca.fit_transform(x_train_scaled).astype(np.float32)
     val_emb = pca.transform(x_val_scaled).astype(np.float32)
 
-    # Cosine similarity with normalized embeddings.
-    train_norm = np.linalg.norm(train_emb, axis=1, keepdims=True) + 1e-8
-    val_norm = np.linalg.norm(val_emb, axis=1, keepdims=True) + 1e-8
-    train_emb = train_emb / train_norm
-    val_emb = val_emb / val_norm
+    train_emb /= np.linalg.norm(train_emb, axis=1, keepdims=True) + 1e-8
+    val_emb /= np.linalg.norm(val_emb, axis=1, keepdims=True) + 1e-8
 
     sims = val_emb @ train_emb.T
     top_idx = np.argmax(sims, axis=1)
@@ -106,6 +109,7 @@ def main() -> None:
                 "num_labels": len(label_to_idx),
                 "embedding_dim": n_components,
                 "stratified_split": bool(stratify is not None),
+                "require_brand": args.require_brand,
             },
             fp,
             indent=2,
