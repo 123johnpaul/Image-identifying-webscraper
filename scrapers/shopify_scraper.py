@@ -1,5 +1,6 @@
 import requests
 from typing import Any
+from rapidfuzz import fuzz
 from .base_scraper import BaseScraper
 
 # A robust, curated registry of UK Shopify stores across different categories
@@ -27,9 +28,8 @@ class ShopifyScraper(BaseScraper):
         self.base_url = store_url.rstrip('/')
         self.api_endpoint = f"{self.base_url}/products.json"
 
-    def search_products(self, query: str) -> list[dict[str, Any]]:
+    def search_products(self, query: str, category: str = None) -> list[dict[str, Any]]:
         try:
-            # Using standard timeout to prevent hanging on bad connections
             response = requests.get(f"{self.api_endpoint}?limit=250", timeout=10)
             response.raise_for_status()
             data = response.json()
@@ -38,17 +38,22 @@ class ShopifyScraper(BaseScraper):
             print(f"Error fetching from {self.store_name}: {e}")
             return []
 
-        # Split the query into a list of individual words
-        query_words = query.lower().split()
         normalized_results = []
 
         for p in products:
-            title = p.get('title', '').lower()
-            body_html = (p.get('body_html', '') or '').lower()
+            title = p.get('title', '')
+            body_html = p.get('body_html', '') or ''
+            searchable_text = f"{title} {body_html}".lower()
             
-            # Check if ALL words in the query exist in the title or description
-            # This allows "black running shoe" to match "Black Runner Shoe"
-            if all(word in title or word in body_html for word in query_words):
+            # THE FIX: Single out the keyword. 
+            # If the AI says it's a "shoe", and the word "shoe" is nowhere in the product, skip it immediately.
+            if category and category.lower() not in searchable_text:
+                continue
+            
+            # If the core keyword is present, revert to the global token_set_ratio for the rest
+            match_score = fuzz.token_set_ratio(query.lower(), searchable_text)
+            
+            if match_score >= 55:
                 images = p.get('images', [])
                 image_url = images[0].get('src', '') if images else ''
                 
@@ -62,7 +67,7 @@ class ShopifyScraper(BaseScraper):
 
                 if price > 0.0:
                     normalized_item = self.normalize_product(
-                        title=p.get('title', ''), # Use original casing for the final output
+                        title=title,
                         price=price,
                         link=f"{self.base_url}/products/{p.get('handle')}",
                         image_url=image_url

@@ -2,15 +2,14 @@ import concurrent.futures
 from typing import Any
 from scrapers.shopify_scraper import ShopifyScraper, UK_SHOPIFY_STORES
 
-def search_all_stores(query: str) -> list[dict[str, Any]]:
-    """Searches the predefined UK Shopify stores concurrently."""
+def search_all_stores(query: str, category: str = None) -> list[dict[str, Any]]:
     all_results = []
     
     def fetch_from_store(store_info):
         scraper = ShopifyScraper(store_url=store_info["url"], store_name=store_info["name"])
-        return scraper.search_products(query)
+        # Pass the category to the scraper
+        return scraper.search_products(query, category)
 
-    # Use ThreadPoolExecutor to run network requests in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(UK_SHOPIFY_STORES)) as executor:
         future_to_store = {executor.submit(fetch_from_store, store): store for store in UK_SHOPIFY_STORES}
         
