@@ -14,6 +14,9 @@ function App() {
   const [metricProvider, setMetricProvider] = useState('local_similarity')
   const [lastIdentify, setLastIdentify] = useState(null)
 
+  const [allResults, setAllResults] = useState([])
+  const [activeQuery, setActiveQuery] = useState('')
+
   const hasImage = useMemo(() => Boolean(imageFile), [imageFile])
 
   const setPreview = (file) => {
@@ -61,12 +64,17 @@ function App() {
       return
     }
 
+    // Explicitly grab the query we are about to send
+    const queryToSend = lastIdentify.search_queries?.[0] || lastIdentify.product?.name || "Unknown item"
+    setActiveQuery(queryToSend)
+
     const payload = {
-      query: lastIdentify.search_queries?.[0] || lastIdentify.product?.name,
+      query: queryToSend,
       product: lastIdentify.product,
     }
 
-    setCompareMessage('Comparing prices…')
+    setCompareMessage(`Searching across UK stores for "${queryToSend}"...`)
+    setAllResults([]) // Clear previous results
 
     try {
       const res = await fetch(`${API_BASE}/compare`, {
@@ -76,11 +84,14 @@ function App() {
       })
 
       const data = await res.json()
+
       if (data.cheapest?.price) {
-        setMetricPrice(`$${data.cheapest.price}`)
-        setCompareMessage(`Cheapest found at ${data.cheapest.store ?? 'store'} for $${data.cheapest.price}`)
+        setMetricPrice(`£${data.cheapest.price.toFixed(2)}`)
+        setCompareMessage(`Cheapest found at ${data.cheapest.store ?? 'store'} for £${data.cheapest.price.toFixed(2)}`)
+        setAllResults(data.all_results || [])
       } else {
-        setCompareMessage('Price comparison endpoint is still placeholder mode.')
+        setCompareMessage('No products found matching that query.')
+        setAllResults([])
       }
     } catch (err) {
       setCompareMessage(err.message)
@@ -222,21 +233,41 @@ function App() {
         </div>
 
         <div className="result-card">
-          <h3>Top Visual Matches</h3>
-          {topMatches.length === 0 && <p className="muted">No matches yet.</p>}
-          {topMatches.slice(0, 4).map((m, idx) => (
-            <div className="match-row" key={`${m.image_path}-${idx}`}>
-              <div>
-                <strong>{m.metadata?.title || 'Item'}</strong>
-                <p className="muted small">{m.metadata?.category || 'Unknown'} • {m.metadata?.color || 'Unknown'}</p>
-              </div>
-              <span className="score">{Math.round((m.score || 0) * 100)}%</span>
-            </div>
-          ))}
-          <button className="btn btn-primary" onClick={handleCompare}>
-            Compare prices
+          <h3>Price Comparison</h3>
+
+          <button className="btn btn-primary" onClick={handleCompare} disabled={!lastIdentify}>
+            {lastIdentify
+              ? `Search stores for: "${lastIdentify.search_queries?.[0] || lastIdentify.product?.name}"`
+              : 'Compare prices'
+            }
           </button>
-          <p className="muted">{compareMessage}</p>
+          <p className="muted" style={{ marginTop: '12px' }}>{compareMessage}</p>
+
+          {/* Display the full list of scraped results */}
+          {allResults.length > 0 && (
+            <div style={{ marginTop: '20px' }}>
+              <h4 style={{ marginBottom: '10px' }}>All Store Results ({allResults.length})</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+                {allResults.map((item, idx) => (
+                  <div className="match-row" key={`${item.link}-${idx}`}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      {item.image_url && (
+                        <img src={item.image_url} alt="product" style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
+                      )}
+                      <div>
+                        <strong>{item.title.length > 40 ? item.title.substring(0, 40) + '...' : item.title}</strong>
+                        <p className="muted small">{item.store}</p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <span className="score">£{item.price.toFixed(2)}</span>
+                      <a href={item.link} target="_blank" rel="noreferrer" className="muted small" style={{ textDecoration: 'underline' }}>View</a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
