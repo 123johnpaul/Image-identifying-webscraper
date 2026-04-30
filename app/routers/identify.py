@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Optional
 
 from fastapi import APIRouter, File, Form, UploadFile
 
@@ -14,82 +13,99 @@ from app.services.query_builder import build_queries
 router = APIRouter()
 
 
-def _dedupe_attributes(items):
-    best = {}
-    for a in items:
-        if not isinstance(a, dict):
-            continue
-        key = str(a.get("key", "")).strip().lower()
-        value = str(a.get("value", "")).strip()
-        if not key or not value:
-            continue
-        conf = float(a.get("confidence") or 0.0)
-        identity = (key, value.lower())
-        if identity not in best or conf > float(best[identity].get("confidence") or 0.0):
-            best[identity] = {"key": key, "value": value, "confidence": conf}
-    return list(best.values())
+def _normalize_category(value: str) -> str:
+    v = value.strip().lower().replace("_", "-")
+    if v in {"tshirt", "t-shirt", "t shirt", "tee", "tees", "tshirts", "t-shirts"}:
+        return "T-shirt"
+    return value.strip().title()
 
 
 @router.post("/identify-product", response_model=IdentifyResponse)
 async def identify_product(
     image: UploadFile = File(...),
-    description: Optional[str] = Form(None),
+    product_name: str = Form(...),
+    category: str = Form(...),
+    product_type: str = Form(...),
+    brand: str = Form(...),
+    color: str = Form(...),
 ):
+    # Mandatory structured description fields from user (authoritative values).
+    user_payload = {
+        "name": product_name.strip(),
+        "category": _normalize_category(category),
+        "product_type": product_type.strip(),
+        "brand": brand.strip(),
+        "color": color.strip().title(),
+    }
+
     suffix = os.path.splitext(image.filename or "")[-1]
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         contents = await image.read()
         tmp.write(contents)
         tmp_path = tmp.name
 
-    client = ImageRecognitionClient()
-    result = client.identify(tmp_path, description=description)
+    description = " ".join([
+        user_payload["brand"],
+        user_payload["name"],
+        user_payload["category"],
+        user_payload["product_type"],
+        user_payload["color"],
+    ]).strip()
 
-    extracted = extract_attributes(result.get("labels", []), description=description)
+    client = ImageRecognitionClient(provider="local_similarity")
+    model_result = client.identify(tmp_path, description=description)
 
-    # Only fill missing fields from text extraction, never overwrite model fields.
-    if not result.get("brand") and extracted.get("brand"):
-        result["brand"] = extracted.get("brand")
-    if not result.get("color") and extracted.get("color"):
-        result["color"] = extracted.get("color").title()
-    if not result.get("category") and extracted.get("category"):
-        result["category"] = extracted.get("category")
+    extracted = extract_attributes(model_result.get("labels", []), description=description)
 
-    merged_attributes = (result.get("attributes") or []) + (extracted.get("attributes") or [])
-    merged_attributes = _dedupe_attributes(merged_attributes)
-
-    # Keep product color/category aligned with highest-confidence deduped attributes.
-    top_color = next((a["value"] for a in sorted(merged_attributes, key=lambda x: x.get("confidence", 0), reverse=True) if a["key"] == "color"), None)
-    top_category = next((a["value"] for a in sorted(merged_attributes, key=lambda x: x.get("confidence", 0), reverse=True) if a["key"] == "category"), None)
-    if top_color:
-        result["color"] = top_color
-    if top_category:
-        result["category"] = top_category
+    # Final output uses user-provided structured fields as ground truth context.
+    final_result = {
+        "name": user_payload["name"],
+        "category": user_payload["category"],
+        "product_type": user_payload["product_type"],
+        "brand": user_payload["brand"],
+        "color": user_payload["color"],
+        "confidence": model_result.get("confidence"),
+        "raw": model_result.get("raw", {}),
+    }
 
     attributes = [
-        IdentifiedAttribute(key=a.get("key"), value=a.get("value"), confidence=a.get("confidence"))
-        for a in merged_attributes
+        IdentifiedAttribute(key="category", value=user_payload["category"], confidence=0.99),
+        IdentifiedAttribute(key="product_type", value=user_payload["product_type"], confidence=0.99),
+        IdentifiedAttribute(key="brand", value=user_payload["brand"], confidence=0.99),
+        IdentifiedAttribute(key="color", value=user_payload["color"], confidence=0.99),
     ]
 
+    # Keep model/extracted hints in debug only to avoid contradictory user-facing fields.
+    debug_hints = {
+        "model_name": model_result.get("name"),
+        "model_category": model_result.get("category"),
+        "model_brand": model_result.get("brand"),
+        "model_color": model_result.get("color"),
+        "extracted": extracted,
+    }
+
     product = IdentifiedProduct(
-        name=result.get("name") or "unknown product",
-        category=result.get("category"),
-        brand=result.get("brand"),
-        color=result.get("color"),
+        name=final_result["name"],
+        category=final_result["category"],
+        brand=final_result["brand"],
+        color=final_result["color"],
         attributes=attributes,
-        confidence=result.get("confidence"),
+        confidence=final_result["confidence"],
     )
 
-    queries = build_queries(result)
+    queries = build_queries(final_result)
 
     return IdentifyResponse(
         product=product,
         search_queries=queries,
         debug={
-            "provider": result.get("raw", {}).get("provider", "mock"),
-            "model_ready": bool(result.get("raw", {}).get("matches")),
-            "top_matches": result.get("raw", {}).get("matches", []),
-            "image_color": result.get("raw", {}).get("image_color"),
-            "voted_color": result.get("raw", {}).get("voted_color"),
-            "error": result.get("raw", {}).get("error"),
+            "provider": final_result.get("raw", {}).get("provider", "local_similarity"),
+            "model_ready": bool(final_result.get("raw", {}).get("matches")),
+            "top_matches": final_result.get("raw", {}).get("matches", []),
+            "image_color": final_result.get("raw", {}).get("image_color"),
+            "voted_color": final_result.get("raw", {}).get("voted_color"),
+            "user_payload": user_payload,
+            "model_hints": debug_hints,
+            "error": final_result.get("raw", {}).get("error"),
         },
     )

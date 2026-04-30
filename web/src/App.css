@@ -107,13 +107,16 @@
 
 .uploader-preview img { width: 100%; height: 100%; object-fit: cover; }
 
+
+.form input,
 .form textarea {
   width: 100%;
   border-radius: 12px;
   border: 1px solid #e2d3c1;
-  padding: 12px 14px;
+  padding: 10px 12px;
   font-family: "Space Grotesk", sans-serif;
   background: #fffdf8;
+  margin-bottom: 10px;
 }
 
 .label { display: block; margin-bottom: 8px; font-weight: 500; }

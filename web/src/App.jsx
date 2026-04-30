@@ -6,7 +6,13 @@ const API_BASE = 'http://127.0.0.1:8000'
 function App() {
   const [imageFile, setImageFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
-  const [description, setDescription] = useState('')
+  const [formFields, setFormFields] = useState({
+    product_name: '',
+    category: '',
+    product_type: '',
+    brand: '',
+    color: '',
+  })
   const [identifyError, setIdentifyError] = useState('')
   const [compareMessage, setCompareMessage] = useState('Waiting for query…')
   const [metricPrice, setMetricPrice] = useState('$0.00')
@@ -22,17 +28,28 @@ function App() {
     setPreviewUrl(url)
   }
 
+  const hasMissingFields = () => {
+    return Object.values(formFields).some((v) => !String(v).trim())
+  }
+
   const handleIdentify = async () => {
     if (!imageFile) {
       setIdentifyError('Please upload an image first.')
       return
     }
 
+    if (hasMissingFields()) {
+      setIdentifyError('Please fill all required fields: name, category, product type, brand, color.')
+      return
+    }
+
     const formData = new FormData()
     formData.append('image', imageFile)
-    if (description.trim()) {
-      formData.append('description', description.trim())
-    }
+    formData.append('product_name', formFields.product_name.trim())
+    formData.append('category', formFields.category.trim())
+    formData.append('product_type', formFields.product_type.trim())
+    formData.append('brand', formFields.brand.trim())
+    formData.append('color', formFields.color.trim())
 
     setIdentifyError('')
 
@@ -90,7 +107,13 @@ function App() {
   const handleReset = () => {
     setImageFile(null)
     setPreviewUrl('')
-    setDescription('')
+    setFormFields({
+      product_name: '',
+      category: '',
+      product_type: '',
+      brand: '',
+      color: '',
+    })
     setIdentifyError('')
     setCompareMessage('Waiting for query…')
     setMetricPrice('$0.00')
@@ -123,12 +146,20 @@ function App() {
           <p className="pill">Image | Identify | Compare</p>
           <h1>Find the lowest price from a single product photo.</h1>
           <p className="sub">
-            Upload a product image, detect what it is, and compare prices across
-            stores without seeing raw JSON debug output.
+            Fill product fields, upload image, and compare prices with cleaner identification.
           </p>
           <div className="hero-actions">
-            <button className="btn btn-ghost" onClick={() => setDescription('Red cotton shirt')}>
-              Use sample description
+            <button
+              className="btn btn-ghost"
+              onClick={() => setFormFields({
+                product_name: 'Cotton Tee',
+                category: 'T-shirt',
+                product_type: 'Topwear',
+                brand: 'Nike',
+                color: 'Red',
+              })}
+            >
+              Use sample fields
             </button>
             <button className="btn btn-muted" onClick={handleReset}>
               Reset
@@ -163,7 +194,7 @@ function App() {
             </div>
             <div className="uploader-meta">
               <h2>Upload product image</h2>
-              <p>Supported: JPG, PNG. Add a short description if needed.</p>
+              <p>All fields below are required.</p>
               <div className="uploader-actions">
                 <label className="btn" htmlFor="imageInput">Choose image</label>
                 <input
@@ -187,14 +218,16 @@ function App() {
         </div>
 
         <div className="form">
-          <label className="label" htmlFor="description">Optional description</label>
-          <textarea
-            id="description"
-            rows="3"
-            placeholder="e.g. red shirt"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
+          <label className="label">Product Name (required)</label>
+          <input value={formFields.product_name} onChange={(e) => setFormFields({ ...formFields, product_name: e.target.value })} />
+          <label className="label">Category (required: e.g. T-shirt)</label>
+          <input value={formFields.category} onChange={(e) => setFormFields({ ...formFields, category: e.target.value })} />
+          <label className="label">Product Type (required: e.g. Topwear)</label>
+          <input value={formFields.product_type} onChange={(e) => setFormFields({ ...formFields, product_type: e.target.value })} />
+          <label className="label">Brand (required)</label>
+          <input value={formFields.brand} onChange={(e) => setFormFields({ ...formFields, brand: e.target.value })} />
+          <label className="label">Color (required)</label>
+          <input value={formFields.color} onChange={(e) => setFormFields({ ...formFields, color: e.target.value })} />
         </div>
       </section>
 
@@ -241,7 +274,7 @@ function App() {
       </section>
 
       <footer className="footer">
-        <span>Prototype UI · Structured product output</span>
+        <span>Prototype UI · Structured mandatory input</span>
       </footer>
     </div>
   )
