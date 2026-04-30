@@ -9,7 +9,6 @@ function App() {
   const [formFields, setFormFields] = useState({
     product_name: '',
     category: '',
-    product_type: '',
     brand: '',
     color: '',
   })
@@ -39,7 +38,7 @@ function App() {
     }
 
     if (hasMissingFields()) {
-      setIdentifyError('Please fill all required fields: name, category, product type, brand, color.')
+      setIdentifyError('Please fill all required fields: name, category, brand, color.')
       return
     }
 
@@ -47,7 +46,6 @@ function App() {
     formData.append('image', imageFile)
     formData.append('product_name', formFields.product_name.trim())
     formData.append('category', formFields.category.trim())
-    formData.append('product_type', formFields.product_type.trim())
     formData.append('brand', formFields.brand.trim())
     formData.append('color', formFields.color.trim())
 
@@ -110,7 +108,6 @@ function App() {
     setFormFields({
       product_name: '',
       category: '',
-      product_type: '',
       brand: '',
       color: '',
     })
@@ -152,11 +149,10 @@ function App() {
             <button
               className="btn btn-ghost"
               onClick={() => setFormFields({
-                product_name: 'Cotton Tee',
-                category: 'T-shirt',
-                product_type: 'Topwear',
-                brand: 'Nike',
-                color: 'Red',
+                product_name: 'Classic Shoulder Bag',
+                category: 'Bag',
+                brand: 'Channel',
+                color: 'Blue',
               })}
             >
               Use sample fields
@@ -222,8 +218,6 @@ function App() {
           <input value={formFields.product_name} onChange={(e) => setFormFields({ ...formFields, product_name: e.target.value })} />
           <label className="label">Category (required: e.g. T-shirt)</label>
           <input value={formFields.category} onChange={(e) => setFormFields({ ...formFields, category: e.target.value })} />
-          <label className="label">Product Type (required: e.g. Topwear)</label>
-          <input value={formFields.product_type} onChange={(e) => setFormFields({ ...formFields, product_type: e.target.value })} />
           <label className="label">Brand (required)</label>
           <input value={formFields.brand} onChange={(e) => setFormFields({ ...formFields, brand: e.target.value })} />
           <label className="label">Color (required)</label>

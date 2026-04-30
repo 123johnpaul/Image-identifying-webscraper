@@ -20,20 +20,56 @@ def _normalize_category(value: str) -> str:
     return value.strip().title()
 
 
+def _filter_matches_for_context(matches, category: str):
+    if not matches:
+        return []
+
+    cat = (category or "").strip().lower()
+    aliases = {
+        "t-shirt": {"topwear", "tshirts", "shirts", "tops", "tee"},
+        "topwear": {"topwear", "tshirts", "shirts", "tops", "tee"},
+        "bag": {"bags", "backpacks", "handbags", "messenger bag"},
+        "bags": {"bags", "backpacks", "handbags", "messenger bag"},
+        "shoe": {"shoes", "footwear", "flats", "sneakers", "sandals", "boots"},
+        "shoes": {"shoes", "footwear", "flats", "sneakers", "sandals", "boots"},
+        "watch": {"watches", "watch"},
+        "watches": {"watches", "watch"},
+    }
+
+    target = set()
+    if cat:
+        target.add(cat)
+        target |= aliases.get(cat, set())
+
+    if not target:
+        return matches
+
+    filtered = []
+    for m in matches:
+        meta = m.get("metadata", {})
+        m_cat = str(meta.get("category") or "").strip().lower()
+        m_title = str(meta.get("title") or "").strip().lower()
+        if any(t in m_cat for t in target) or any(t in m_title for t in target):
+            filtered.append(m)
+
+    return filtered if filtered else matches
+
+
 @router.post("/identify-product", response_model=IdentifyResponse)
 async def identify_product(
     image: UploadFile = File(...),
     product_name: str = Form(...),
     category: str = Form(...),
-    product_type: str = Form(...),
     brand: str = Form(...),
     color: str = Form(...),
 ):
-    # Mandatory structured description fields from user (authoritative values).
+    normalized_category = _normalize_category(category)
+    product_type = normalized_category
+
     user_payload = {
         "name": product_name.strip(),
-        "category": _normalize_category(category),
-        "product_type": product_type.strip(),
+        "category": normalized_category,
+        "product_type": product_type,
         "brand": brand.strip(),
         "color": color.strip().title(),
     }
@@ -48,7 +84,6 @@ async def identify_product(
         user_payload["brand"],
         user_payload["name"],
         user_payload["category"],
-        user_payload["product_type"],
         user_payload["color"],
     ]).strip()
 
@@ -57,7 +92,6 @@ async def identify_product(
 
     extracted = extract_attributes(model_result.get("labels", []), description=description)
 
-    # Final output uses user-provided structured fields as ground truth context.
     final_result = {
         "name": user_payload["name"],
         "category": user_payload["category"],
@@ -75,14 +109,8 @@ async def identify_product(
         IdentifiedAttribute(key="color", value=user_payload["color"], confidence=0.99),
     ]
 
-    # Keep model/extracted hints in debug only to avoid contradictory user-facing fields.
-    debug_hints = {
-        "model_name": model_result.get("name"),
-        "model_category": model_result.get("category"),
-        "model_brand": model_result.get("brand"),
-        "model_color": model_result.get("color"),
-        "extracted": extracted,
-    }
+    top_matches = final_result.get("raw", {}).get("matches", [])
+    top_matches = _filter_matches_for_context(top_matches, user_payload["category"])
 
     product = IdentifiedProduct(
         name=final_result["name"],
@@ -100,12 +128,18 @@ async def identify_product(
         search_queries=queries,
         debug={
             "provider": final_result.get("raw", {}).get("provider", "local_similarity"),
-            "model_ready": bool(final_result.get("raw", {}).get("matches")),
-            "top_matches": final_result.get("raw", {}).get("matches", []),
+            "model_ready": bool(top_matches),
+            "top_matches": top_matches,
             "image_color": final_result.get("raw", {}).get("image_color"),
             "voted_color": final_result.get("raw", {}).get("voted_color"),
             "user_payload": user_payload,
-            "model_hints": debug_hints,
+            "model_hints": {
+                "model_name": model_result.get("name"),
+                "model_category": model_result.get("category"),
+                "model_brand": model_result.get("brand"),
+                "model_color": model_result.get("color"),
+                "extracted": extracted,
+            },
             "error": final_result.get("raw", {}).get("error"),
         },
     )
