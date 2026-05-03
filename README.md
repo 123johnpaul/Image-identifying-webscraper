@@ -14,18 +14,13 @@ The system seamlessly integrates an AI vision pipeline with a concurrent web scr
 
 ---
 
-## 👨‍💻 Developer Contributions
 
-### Daniel – AI Engineer (Image Recognition & Query Generation)
-Daniel led the development of the AI-driven product identification pipeline:
 * **`/identify-product` API Endpoint:** Created the FastAPI endpoint to receive uploaded images and structured form data (Category, Color, Brand).
 * **AI Image Recognition:** Integrated computer vision logic (`ImageRecognitionClient`) to process the image and user payload.
 * **Attribute Extraction:** Extracted strict attributes ensuring downstream compatibility.
 * **Query Builder:** Developed the `build_queries` module to translate AI labels into robust search queries.
 * **Contextual Product Filtering:** Implemented `_filter_matches_for_context` to validate matches against product categories (e.g., matching "T-shirt" to "Topwear").
 
-### Uzochi – Backend & Data Engineer (Scraping & Price Comparison)
-Uzochi led the backend infrastructure, data retrieval, and comparison logic:
 * **Modular Scraper Architecture:** Built `base_scraper.py` to enforce strict product normalization and `shopify_scraper.py` to target a curated registry of 15+ UK Shopify stores concurrently.
 * **Fuzzy Matching Integration:** Utilized `rapidfuzz` (`token_set_ratio` and token-level validation) to ensure AI-generated queries gracefully matched real-world e-commerce product titles.
 * **Price Comparison Engine:** Developed the `search_all_stores` and `get_cheapest_product` algorithms to quickly sort and identify the best deals without blocking the main thread.
